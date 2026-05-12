@@ -13,7 +13,7 @@ The project has three components, built sequentially:
 3. Refusal direction analysis (extract via difference-in-means, test causal 
    role via ablation/addition)
 
-Currently in progress: Component 1, finetuning and evaluation
+Currently in progress: Component 1, finetuning and evaluation.
 
 ## Architecture principles
 - **Abstract interfaces, swappable implementations.** `base.py` files define 
