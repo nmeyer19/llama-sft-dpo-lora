@@ -6,8 +6,8 @@ class BaseDataLoader(ABC):
     Abstract base class for all data loaders.
 
     All data loaders should inherit from this class and must implement the
-    `load` and `get_data` methods.
-    Training and eval loops should depend only on this interface, allowing 
+    `load` method, which is expected to populate `self.data`.
+    Training and eval loops should depend only on this interface, allowing
     for flexibility in the choice of data loading mechanism.
     Every loader receives a config dictionary, which can contain whatever is
     needed for loading and preprocessing that data.
@@ -22,7 +22,9 @@ class BaseDataLoader(ABC):
         """Load and preprocess the data."""
         ...
 
-    @abstractmethod
     def get_data(self) -> Any:
-        """Return the processed data."""
-        ...
+        """Return the processed data. Raises if load() has not been called."""
+        if not hasattr(self, "data"):
+            raise RuntimeError(
+                f"Data not loaded. Call {self.__class__.__name__}.load() first.")
+        return self.data

@@ -59,6 +59,6 @@ inside Colab. Heavy outputs (checkpoints, activations) save to Google Drive.
 Do not assume a persistent local filesystem.
 
 ## What not to do
-- Do not modify files in `interpretability/` yet, that's components 2 and 3
+- Do not modify files in `interpretability/` yet
 - Do not hardcode any file paths; use `pathlib.Path` and config values
 - Do not add dependencies outside the key dependencies above without flagging it
