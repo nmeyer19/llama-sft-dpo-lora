@@ -14,7 +14,7 @@ class HHRLHFDataLoader(BaseDataLoader):
         raw_dataset = load_dataset(
             cfg["dataset"],
             data_dir=cfg["subset"],
-            split=cfg["train_split"]
+            split=cfg["split"]
         )
 
         if cfg["max_samples"] is not None:

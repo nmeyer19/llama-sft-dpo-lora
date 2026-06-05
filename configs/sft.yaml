@@ -1,0 +1,38 @@
+model:
+  name: meta-llama/Llama-3.2-1B       # HF location of base model
+  max_length: 512                     # max sequence length
+  torch_dtype: bfloat16               # 16bit float weights for mem efficiency
+
+lora:
+  r: 16                               # bottleneck rank
+  alpha: 32                           # scaling factor, 2r is standard
+  dropout: 0.05                       # regularization to prevent overfitting
+  target_modules:                     # what we're attaching LoRA to
+    - q_proj                          # query projection
+    - v_proj                          # value projection
+
+training:
+  learning_rate: 2e-5                 # 2e-5 standard for SFT w/ LoRA
+  batch_size: 4                       # batch size
+  num_epochs: 3                       # epochs
+  warmup_steps: 100                   # learning rate warmup
+  gradient_accumulation_steps: 4      # grad accum for effective batch size of 16
+  max_steps: -1                       # max training steps, -1 for no limit
+  save_steps: 200                     # how often to save checkpoints
+  logging_steps: 10                   # how often to log training metrics to W&B
+  output_dir:                         # where to save checkpoints
+    /content/drive/MyDrive/llama-sft-dpo-lora/sft/sft_training
+
+data:
+  dataset: databricks/databricks-dolly-15k  # dataset HF ID
+  split: train                              # split to train on
+  max_samples: 5000                         # how much data we'll use
+  seed: 42                                  # for reproducibility
+
+wandb:
+  project: llama-sft-dpo-lora               # W&B project name
+  run_name: sft-lora-r16-5k-samples         # W&B run name
+
+outputs:
+  model_dir:                                # where the SFT model is saved
+    /content/drive/MyDrive/llama-sft-dpo-lora/sft/sft_model

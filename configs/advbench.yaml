@@ -4,6 +4,9 @@ benchmark:
   split: train                        # split to evaluate on
   prompt_column: prompt               # column in the dataset with the prompts
 
+model:                                # eval on both SFT and DPO model
+  torch_dtype: bfloat16               # 16bit float weights for mem efficiency
+
 evaluation:
   max_new_tokens: 200                 # max tokens in response
   batch_size: 8
@@ -33,5 +36,5 @@ refusal:
 
 outputs:
   results_dir: 
-    /content/drive/MyDrive/_Spring26/ADL/refusal-representations/eval_results
+    /content/drive/MyDrive/llama-sft-dpo-lora/advbench_results
   save_responses: true               # save model responses for analysis
