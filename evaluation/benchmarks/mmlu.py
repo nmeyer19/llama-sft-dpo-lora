@@ -34,7 +34,6 @@ class MMLUBenchmark(BaseBenchmark):
         # subject counters for self.results
         subj_corr = {}
         subj_total = {}
-        subj_acc = {}
 
         # evaluation loop
         self.model.eval()
@@ -90,16 +89,17 @@ class MMLUBenchmark(BaseBenchmark):
                 answers = list(batch["answer"])     # list of batch answers
                 
                 for sj, pt, an, pd in zip(subjects, prompts, answers, predictions):
+                    is_correct = an == pd
                     self.responses.append({"subject": sj,
                                            "prompt": pt,
                                            "answer": an,
                                            "prediction": pd,
-                                           "correct": ["A","B","C","D"][an] == pd})
+                                           "correct": is_correct})
                     
-                    if ["A","B","C","D"][an] == pd: subj_corr[sj] = subj_corr.get(sj, 0) + 1
+                    if is_correct: subj_corr[sj] = subj_corr.get(sj, 0) + 1
                     subj_total[sj] = subj_total.get(sj, 0) + 1
-                    subj_acc[sj] = subj_corr.get(sj, 0) / subj_total[sj]
 
+        subj_acc = {s: subj_corr.get(s, 0) / subj_total[s] for s in subj_total}
         total_acc = sum(subj_corr.values()) / sum(subj_total.values())
 
         self.results = {"per_subject": subj_acc, "total": total_acc}
