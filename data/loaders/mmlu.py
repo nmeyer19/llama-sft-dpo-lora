@@ -32,7 +32,9 @@ class MMLUDataLoader(BaseDataLoader):
         else:
             full_dataset = raw_dataset
 
-        self.data = full_dataset.map(self._format_mcq)
+        self.data = full_dataset.map(self._format_mcq, 
+                                     remove_columns=full_dataset.column_names,
+                                     load_from_cache_file=False)
 
         # fewshot formatting
         dev_raw = load_dataset(cfg["dataset"], "all", split="dev")
@@ -42,7 +44,9 @@ class MMLUDataLoader(BaseDataLoader):
         for subject in cfg["subjects"]:
             subj_dev = dev_raw.filter(lambda x, s=subject: x["subject"] == s)
             subj_dev = subj_dev.select(range(min(num_shots, len(subj_dev))))
-            self.fewshot[subject] = list(subj_dev.map(self._format_mcq))
+            self.fewshot[subject] = list(subj_dev.map(self._format_mcq, 
+                                                      remove_columns=subj_dev.column_names,
+                                                      load_from_cache_file=False))
 
 
     def _format_mcq(self, example: dict) -> dict:
@@ -55,7 +59,7 @@ class MMLUDataLoader(BaseDataLoader):
             "subject": example["subject"],
             "question": example["question"],
             "choices": example["choices"],
-            "answer": ["A", "B", "C", "D"][example["answer"]]
+            "answer_letter": ["A", "B", "C", "D"][example["answer"]]
         }
 
     def get_fewshot(self) -> Any:

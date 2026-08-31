@@ -33,9 +33,9 @@ class MMLUBenchmark(BaseBenchmark):
         """Construct the answered fewshot examples in the prompt's style."""
         body = self._body(example)
         if self.prompt_style == "plain":
-            return f"{body}\nAnswer: {example['answer']}"
+            return f"{body}\nAnswer: {example['answer_letter']}"
 
-        return f"Instruction: {body}\nResponse: {example['answer']}"
+        return f"Instruction: {body}\nResponse: {example['answer_letter']}"
 
     def _query(self, example: dict) -> str:
         """Construct the target question, ending on the answer cue with no trailing space."""
@@ -129,7 +129,7 @@ class MMLUBenchmark(BaseBenchmark):
 
                 subjects = list(batch["subject"])
                 questions = list(batch["question"])
-                answers = list(batch["answer"])
+                answers = list(batch["answer_letter"])
                 
                 for sj, q, an, pd in zip(subjects, questions, answers, predictions):
                     is_correct = an == pd
