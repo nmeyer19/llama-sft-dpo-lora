@@ -5,7 +5,8 @@ from models.loader import load_model
 from peft import get_peft_model, LoraConfig, TaskType
 import torch
 from torch.utils.data import DataLoader
-import wandb 
+from torch.nn.utils import clip_grad_norm_
+import wandb
 
 # load the config
 with open("./configs/sft.yaml", "r") as file:
@@ -15,6 +16,11 @@ with open("./configs/sft.yaml", "r") as file:
 dataloader = DollyDataLoader(config)
 dataloader.load()
 dataset = dataloader.get_data()
+
+# hold some out to test
+split_dataset = dataset.train_test_split(test_size=0.05, seed=config["data"]["seed"])
+train_data = split_dataset["train"]
+test_data = split_dataset["test"]
 
 # load base model and tokenizer
 base_model, tokenizer = load_model(config)
@@ -29,7 +35,7 @@ def tokenize(example):
 
     # concatenate token ids and truncate to max_length config
     prompt_ids = tokenized_prompt["input_ids"] 
-    response_ids = tokenized_response["input_ids"]
+    response_ids = tokenized_response["input_ids"] + [tokenizer.eos_token_id]
     input_ids = prompt_ids + response_ids
     input_ids = input_ids[:config["model"]["max_length"]]
 
@@ -47,7 +53,8 @@ def tokenize(example):
         "labels": labels
     }
 
-tokenized_dataset = dataset.map(tokenize, remove_columns=dataset.column_names)
+train_tokenized = train_data.map(tokenize, remove_columns=train_data.column_names)
+test_tokenized = test_data.map(tokenize, remove_columns=test_data.column_names)
 
 # construct the lora model
 lora_config = LoraConfig(
@@ -68,10 +75,14 @@ optimizer = torch.optim.AdamW(lora_model.parameters(),
 collator = DataCollatorForSeq2Seq(tokenizer, lora_model, padding=True, 
                                   label_pad_token_id=-100)
 
-# torch dataloader for training
-train_dataloader = DataLoader(tokenized_dataset, 
+# dataloaders
+train_dataloader = DataLoader(train_tokenized, 
                               batch_size=config["training"]["batch_size"],
                               shuffle=True, collate_fn=collator)
+
+test_dataloader = DataLoader(test_tokenized, 
+                              batch_size=config["training"]["batch_size"],
+                              shuffle=False, collate_fn=collator)
 
 total_steps = ((len(train_dataloader) // 
                config["training"]["gradient_accumulation_steps"]) * 
@@ -88,11 +99,11 @@ lora_model.train()
 
 # training-relevant initializations
 acc_loss = 0
-step = 1
+step = 1            # how many forward passess are performed
+global_step = 0     # how many actual optimizer steps taken
 
 total_epochs = config["training"]["num_epochs"]
 gradient_accumulations = config["training"]["gradient_accumulation_steps"]
-logging_steps = config["training"]["logging_steps"]
 
 wandb.init(project=config["wandb"]["project"],
            name=config["wandb"]["run_name"],
@@ -107,24 +118,48 @@ optimizer.zero_grad()
 # training loop
 for epoch in range(total_epochs):
     for batch in train_dataloader:
-        batch = {k: v.to(device) for k, v in batch.items()} # move batch to GPU
-        outputs = lora_model(**batch)                       # forward pass
-        loss = outputs.loss / gradient_accumulations        # normalized loss
-        acc_loss += loss.item()                             # accumulated loss
-        loss.backward()                                     # backward pass
-                                                            # accumulates gradients
+        batch = {k: v.to(device) for k, v in batch.items()}         # move batch to GPU
+        outputs = lora_model(**batch)                               # forward pass
+        train_loss = outputs.loss / gradient_accumulations          # normalized loss
+        acc_loss += train_loss.item()                               # accumulated loss
+        train_loss.backward()                                       # backward pass
+                                                                    # accumulates gradients
 
         if step % gradient_accumulations == 0:
-            optimizer.step()                                # update weights
-            optimizer.zero_grad()                           # zero out accumulated gradients
-            scheduler.step()                                # update LR
-            
-            if step % (gradient_accumulations * logging_steps) == 0:
-                wandb.log({"loss": acc_loss / logging_steps, 
-                           "lr": scheduler.get_last_lr()[0]})
-                acc_loss = 0                                # reset accumulation
+            # step
+            grad_norm = clip_grad_norm_(lora_model.parameters(), max_norm=1.0)  # clip gradients 
+            optimizer.step()                                        # update weights
+            optimizer.zero_grad()                                   # zero out accumulated gradients
+            scheduler.step()                                        # update LR
+            global_step += 1                                        # count step
+
+            # log
+            wandb.log({"train_loss": acc_loss, 
+                       "lr": scheduler.get_last_lr()[0],
+                       "grad_norm": grad_norm.item()},
+                       step=global_step)
+            acc_loss = 0                                            # reset accumulation
         
-        step += 1
+        step += 1                                                   # count forward pass
+
+    # validate on held-out
+    lora_model.eval()                                               # eval mode
+    with torch.no_grad():
+        total_loss, total_tokens = 0.0, 0
+        for b in test_dataloader:
+            b = {k: v.to(device) for k, v in b.items()}             # move batch to GPU
+            outputs = lora_model(**b)                               # forward pass
+            n_tokens = (b["labels"] != -100).sum()                  # ignore prompt tokens
+            total_loss += outputs.loss.float() * n_tokens
+            total_tokens += n_tokens 
+
+    # get total loss and log
+    val_loss = (total_loss / total_tokens).item()                   
+    wandb.log({"val_loss": val_loss, 
+               "epoch": epoch},
+               step=global_step)
+
+    lora_model.train()                                              # back to train mode
 
 # save everything
 lora_model.save_pretrained(config["outputs"]["model_dir"])

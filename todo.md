@@ -1,37 +1,12 @@
 # Todo
 
-## 1. Bug fixes (do these first, before writing anything new)
-
-**`training/sft.py` — logging math**
-The accumulated loss logged to W&B is scaled down by `gradient_accumulation_steps` because
-you divide `outputs.loss` before adding to `acc_loss`. Track a separate accumulator for
-logging that uses `outputs.loss.item()` (unnormalized), and keep the divided value only for
-the backward pass.
+## 1. Bug fix
 
 **`evaluation/benchmarks/mmlu.py:97` — answer type mismatch**
 The MMLU loader already converts the integer answer to a letter string (e.g. `"A"`), so
 `["A","B","C","D"][an]` will throw a `TypeError` at runtime. The comparison should just be
 `an == pd` (both strings). Verify the loader and benchmark are in sync on what type `answer`
 holds before running any eval.
-
----
-
-## 2. Extend training scripts with held-out Dolly val loss
-
-Before running training again, extend both `sft.py` and `dpo.py` to compute and log held-out
-Dolly val loss to W&B at the end of each epoch. It needs to live in the training scripts (not
-a separate eval script) so it appears alongside training loss on the same W&B chart.
-
-Concretely, `sft.py` needs to:
-- Carve out a held-out validation split from the Dolly dataset before training (not touched
-  during any training step)
-- After each epoch, run the model in eval mode over the val split and average the per-token loss
-- Log it to W&B as `val_loss` alongside the training `loss`
-
-`dpo.py` needs the same, so you can see whether DPO degrades fit to the Dolly distribution.
-
-Important: use the same prompt format and label masking as training (prompt tokens masked with
--100, loss computed only over response tokens). Do not run this on the base model.
 
 ---
 
@@ -44,6 +19,7 @@ The file cuts off before tokenization. Key things to work out before writing:
 - The reference model is already a merged dense model (from `merge_and_unload()`). The policy
   model wraps it in a fresh LoRA — this is correct, but understand that these are new DPO
   adapters, not a continuation of the SFT adapters.
+- Remeber to include test/train split
 
 **DPO run notebook**
 Mirror the structure of `01_sft_training.ipynb`.
