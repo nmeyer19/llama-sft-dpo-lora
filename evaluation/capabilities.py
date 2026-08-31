@@ -36,6 +36,7 @@ for m in models:
     # kick things off and reconfigure output location
     print(f"\nevaluating {m['name']}...")
     mmlu_config["outputs"]["results_dir"] = gen_results_dir + "/" + m["name"]
+    mmlu_config["outputs"]["prompt_style"] = "plain" if m["name"] == "base-model" else "dolly"
 
     # load model and put it on the gpu
     model, tokenizer = load_model(m["config"], checkpoint_path=m["checkpoint"])
