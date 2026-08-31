@@ -15,6 +15,45 @@ class MMLUBenchmark(BaseBenchmark):
         dataloader = MMLUDataLoader(self.config)
         dataloader.load()
         self.data = dataloader.get_data()
+        self.fewshot = dataloader.get_fewshot()
+        self.prompt_style = self.config["evaluation"]["prompt_style"]
+
+    def _body(self, example: dict) -> str:
+        """Construct the question and its four lettered choices."""
+        choices = example["choices"]
+        return (
+            f"{example['question']}\n"
+            f"A. {choices[0]}\n"
+            f"B. {choices[1]}\n"
+            f"C. {choices[2]}\n"
+            f"D. {choices[3]}"
+        )
+
+    def _shot(self, example: dict) -> str:
+        """Construct the answered fewshot examples in the prompt's style."""
+        body = self._body(example)
+        if self.prompt_style == "plain":
+            return f"{body}\nAnswer: {example['answer']}"
+
+        return f"Instruction: {body}\nResponse: {example['answer']}"
+
+    def _query(self, example: dict) -> str:
+        """Construct the target question, ending on the answer cue with no trailing space."""
+        body = self._body(example)
+        if self.prompt_style == "plain":
+            return f"{body}\nAnswer:"
+
+        return f"Instruction: {body}\nResponse:"
+
+    def _build_prompt(self, example: dict) -> str:
+        """Full few-shot prompt: preamble + examples + target query."""
+        subject = example["subject"]
+        preamble = (
+            f"The following are multiple choice questions (with answers) "
+            f"about {subject.replace('_', ' ')}.\n\n"
+        )
+        shots = "\n\n".join(self._shot(s) for s in self.fewshot[subject])
+        return preamble + shots + "\n\n" + self._query(example)
 
     def evaluate(self) -> None:
         """Evaluate the model on the MMLU benchmark."""
@@ -37,6 +76,8 @@ class MMLUBenchmark(BaseBenchmark):
 
         # evaluation loop
         self.model.eval()
+        self.tokenizer.padding_side = "right"
+        self.tokenizer.truncation_side = "left"
         batch_size = self.config["evaluation"]["batch_size"]
 
         with torch.no_grad():
@@ -45,10 +86,12 @@ class MMLUBenchmark(BaseBenchmark):
                 batch = self.data.select(range(i, min(i + batch_size, 
                                                       len(self.data))))
                 # tokenize prompts and move to device
-                tokenized_prompts = self.tokenizer(list(batch["prompt"]), 
+                prompts = [self._build_prompt(ex) for ex in batch]
+                tokenized_prompts = self.tokenizer(prompts, 
                                                    return_tensors="pt",
                                                    padding=True, 
-                                                   truncation=True)
+                                                   truncation=True,
+                                                   max_length=self.config["evaluation"]["max_length"])
                 tokenized_prompts = {k: v.to(device) for k, v in 
                                      tokenized_prompts.items()}
 
@@ -84,14 +127,14 @@ class MMLUBenchmark(BaseBenchmark):
                 pred_ids = pred_ids.tolist()
                 predictions = [["A", "B", "C", "D"][idx] for idx in pred_ids]
 
-                subjects = list(batch["subject"])   # list of batch subjects
-                prompts = list(batch["prompt"])     # list of batch prompts
-                answers = list(batch["answer"])     # list of batch answers
+                subjects = list(batch["subject"])
+                questions = list(batch["question"])
+                answers = list(batch["answer"])
                 
-                for sj, pt, an, pd in zip(subjects, prompts, answers, predictions):
+                for sj, q, an, pd in zip(subjects, questions, answers, predictions):
                     is_correct = an == pd
                     self.responses.append({"subject": sj,
-                                           "prompt": pt,
+                                           "question": q,
                                            "answer": an,
                                            "prediction": pd,
                                            "correct": is_correct})
