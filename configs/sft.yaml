@@ -19,7 +19,6 @@ training:
   gradient_accumulation_steps: 4      # grad accum for effective batch size of 16
   max_steps: -1                       # max training steps, -1 for no limit
   save_steps: 200                     # how often to save checkpoints
-  logging_steps: 10                   # how often to log training metrics to W&B
   output_dir:                         # where to save checkpoints
     /content/drive/MyDrive/llama-sft-dpo-lora/sft/sft_training
 
