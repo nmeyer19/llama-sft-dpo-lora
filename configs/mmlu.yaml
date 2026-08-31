@@ -8,6 +8,7 @@ benchmark:
   split: test
   max_samples: 2850
   seed: 42
+  num_shots: 5
   subjects: ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 
     'clinical_knowledge', 'college_biology', 'college_chemistry', 
     'college_computer_science', 'college_mathematics', 'college_medicine', 

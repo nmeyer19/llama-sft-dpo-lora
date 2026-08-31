@@ -1,15 +1,19 @@
 from datasets import load_dataset, concatenate_datasets
 from data.loaders.base import BaseDataLoader
+from typing import Any
 
 class MMLUDataLoader(BaseDataLoader):
     """
     Data loader for the MMLU benchmark.
-    Loads 50 examples from each subject and formats them into a multiple-choice
-    style question for evaluation.
+    Loads 50 examples from each subject and configures few-shot prompting.
     """
 
     def load(self) -> None:
-        """Load and preprocess the MMLU dataset."""
+        """
+        Load and preprocess the MMLU dataset.
+        Add few-shot prompting using the dev pool examples from the dataset.
+        """
+        # load and preprocess
         cfg = self.config["benchmark"]
         raw_dataset = load_dataset(cfg["dataset"], "all", split=cfg["split"])
 
@@ -30,29 +34,33 @@ class MMLUDataLoader(BaseDataLoader):
 
         self.data = full_dataset.map(self._format_mcq)
 
+        # fewshot formatting
+        dev_raw = load_dataset(cfg["dataset"], "all", split="dev")
+        num_shots = cfg["num_shots"]
+        self.fewshot = {}
+
+        for subject in cfg["subjects"]:
+            subj_dev = dev_raw.filter(lambda x, s=subject: x["subject"] == s)
+            subj_dev = subj_dev.select(range(min(num_shots, len(subj_dev))))
+            self.fewshot[subject] = list(subj_dev.map(self._format_mcq))
+
+
     def _format_mcq(self, example: dict) -> dict:
         """
-        Formats a raw MMLU example into a multiple-choice question.
-        Each example contains a question, subject, choices, and answer field.
-        We Concatenate the question and choices fields and return the desired 
-        MCQ format.
+        Converts integer answer to a letter and passes question, choices, and
+        subject unchanged.
         """
 
-        question = example["question"]
-        choices = example["choices"]
-        
-        prompt = (
-            f"Question: {question}\n"
-            f"A. {choices[0]}\n"
-            f"B. {choices[1]}\n"
-            f"C. {choices[2]}\n"
-            f"D. {choices[3]}\n"
-            f"Answer:"
-        )
-        
-        answer = ["A", "B", "C", "D"][example["answer"]]
-
         return {
-            "prompt": prompt,
-            "answer": answer,
+            "subject": example["subject"],
+            "question": example["question"],
+            "choices": example["choices"],
+            "answer": ["A", "B", "C", "D"][example["answer"]]
         }
+
+    def get_fewshot(self) -> Any:
+        """Return the processed data. Raises if load() has not been called."""
+        if not hasattr(self, "fewshot"):
+            raise RuntimeError(
+                f"Fewshot not loaded. Call {self.__class__.__name__}.load() first.")
+        return self.fewshot
