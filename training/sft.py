@@ -1,5 +1,4 @@
 import yaml
-from data.loaders.dolly import DollyDataLoader
 from transformers import get_linear_schedule_with_warmup, DataCollatorForSeq2Seq
 from models.loader import load_model
 from peft import get_peft_model, LoraConfig, TaskType
@@ -8,53 +7,23 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 import wandb
 
+from training.validation import split_dolly, tokenize_prompt_response, evaluate_holdout_loss
+
 # load the config
 with open("./configs/sft.yaml", "r") as file:
     config = yaml.safe_load(file)
 
-# load training data
-dataloader = DollyDataLoader(config)
-dataloader.load()
-dataset = dataloader.get_data()
-
-# hold some out to test
-split_dataset = dataset.train_test_split(test_size=0.05, seed=config["data"]["seed"])
-train_data = split_dataset["train"]
-test_data = split_dataset["test"]
+# load + hold out the canonical Dolly split (dpo.py reuses this same split
+# to check whether DPO training degrades the Dolly fit)
+train_data, test_data = split_dolly(config)
 
 # load base model and tokenizer
 base_model, tokenizer = load_model(config)
 
-# tokenizes an example and masks the prompt tokens
-def tokenize(example):
-    # tokenize prompt and response separately
-    tokenized_prompt = tokenizer(example["prompt"], padding=False)
-    
-    tokenized_response = tokenizer(example["response"], padding=False, 
-                                   add_special_tokens=False)
-
-    # concatenate token ids and truncate to max_length config
-    prompt_ids = tokenized_prompt["input_ids"] 
-    response_ids = tokenized_response["input_ids"] + [tokenizer.eos_token_id]
-    input_ids = prompt_ids + response_ids
-    input_ids = input_ids[:config["model"]["max_length"]]
-
-    # mask prompt tokens for no gradient signal and truncate length
-    # and truncate to max_length config
-    labels = [-100]*len(prompt_ids) + response_ids
-    labels = labels[:config["model"]["max_length"]]
-
-    # attention_mask all 1s (inherits truncation from labels)
-    attention_mask = [1] * len(input_ids)
-
-    return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "labels": labels
-    }
-
-train_tokenized = train_data.map(tokenize, remove_columns=train_data.column_names)
-test_tokenized = test_data.map(tokenize, remove_columns=test_data.column_names)
+train_tokenized = train_data.map(
+    tokenize_prompt_response,
+    fn_kwargs={"tokenizer": tokenizer, "max_length": config["model"]["max_length"]},
+    remove_columns=train_data.column_names)
 
 # construct the lora model
 lora_config = LoraConfig(
@@ -75,14 +44,10 @@ optimizer = torch.optim.AdamW(lora_model.parameters(),
 collator = DataCollatorForSeq2Seq(tokenizer, lora_model, padding=True, 
                                   label_pad_token_id=-100)
 
-# dataloaders
-train_dataloader = DataLoader(train_tokenized, 
+# dataloader
+train_dataloader = DataLoader(train_tokenized,
                               batch_size=config["training"]["batch_size"],
                               shuffle=True, collate_fn=collator)
-
-test_dataloader = DataLoader(test_tokenized, 
-                              batch_size=config["training"]["batch_size"],
-                              shuffle=False, collate_fn=collator)
 
 total_steps = ((len(train_dataloader) // 
                config["training"]["gradient_accumulation_steps"]) * 
@@ -142,20 +107,12 @@ for epoch in range(total_epochs):
         
         step += 1                                                   # count forward pass
 
-    # validate on held-out
-    lora_model.eval()                                               # eval mode
-    with torch.no_grad():
-        total_loss, total_tokens = 0.0, 0
-        for b in test_dataloader:
-            b = {k: v.to(device) for k, v in b.items()}             # move batch to GPU
-            outputs = lora_model(**b)                               # forward pass
-            n_tokens = (b["labels"] != -100).sum()                  # ignore prompt tokens
-            total_loss += outputs.loss.float() * n_tokens
-            total_tokens += n_tokens 
-
-    # get total loss and log
-    val_loss = (total_loss / total_tokens).item()                   
-    wandb.log({"val_loss": val_loss, 
+    # validate on held-out Dolly split (shared helper -- dpo.py calls the
+    # same function on the policy model to check for Dolly-fit degradation)
+    val_loss = evaluate_holdout_loss(lora_model, tokenizer, test_data, device,
+                                     config["model"]["max_length"],
+                                     batch_size=config["training"]["batch_size"])
+    wandb.log({"val_loss": val_loss,
                "epoch": epoch},
                step=global_step)
 

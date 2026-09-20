@@ -1,44 +1,7 @@
 # Todo
 
-## Infra: checkpoint saving — Drive to HF Hub
-Model weights (LoRA adapters + tokenizer) move to HF Hub; everything else (eval result
-dumps, notebook scratch) stays on Drive, since W&B already owns metrics/curves.
-
-Done:
-- **`.env`** (new, gitignored) — holds `HF_TOKEN` for **local** script use only.
-- **`configs/sft.yaml`** — `outputs.model_dir` -> `outputs.hub_repo_id:
-  nmeyer19/llama-3.2-1b-sft-dolly-lora` (+ `outputs.hub_private: false`).
-- **`configs/dpo.yaml`** — `model.checkpoint_path` -> the SFT repo id above;
-  `outputs.model_dir` -> `outputs.hub_repo_id: nmeyer19/llama-3.2-1b-dpo-harmless-lora`
-  (+ `outputs.hub_private: false`). Still missing `beta` (see item 4).
-- **`training/sft.py`** — final `save_pretrained(...)` calls replaced with
-  `push_to_hub(...)`, tagging each commit with `lr` / `epochs` / the W&B run URL.
-- **`evaluation/capabilities.py`** — checkpoint lookups updated to `outputs.hub_repo_id`.
-- **`models/loader.py`** — confirmed no change needed; `from_pretrained` already resolves
-  a Hub repo id exactly like a local path.
-
-Still open:
-- Confirm the Colab `HF_TOKEN` secret (`userdata.get("HF_TOKEN")`, used in
-  `notebooks/01_sft_training.ipynb` cell 5) actually has **write** scope — it's only ever
-  needed read, for downloading gated Llama weights, until now. This is the one thing that
-  will make the retrain in step 1 below actually fail if it's wrong.
-- **`training/dpo.py`** — once written (see item 4), its save step should push to
-  `configs/dpo.yaml`'s new `outputs.hub_repo_id`.
-- Decide: push once at the end of training (current behavior, matches what `sft.py` always
-  did) vs. per-epoch. A Hub push is all-or-nothing unlike Drive's continuous sync, so a
-  disconnect mid-run still loses everything either way today — per-epoch pushes would fix
-  that, but haven't been added.
-- `requirements.txt` / `python-dotenv`: still not added, since no local script reads `.env`
-  yet. Add it if/when one does.
-
-## Next steps
-
-### 1. Gate: is the SFT checkpoint current?
-A base-vs-SFT comparison only means something if the SFT adapter is properly trained. The
-notes say SFT loss was flat at LR 2e-5; commit `55e670c` bumped it to 2e-4.
-- If the checkpoint on Drive is from the **2e-4** run with the current script -> proceed.
-- If it's the old **2e-5** flat run -> **retrain SFT first** with the updated `sft.py`
-  (picks up the val-loss curve, EOS, grad clip). On the critical path anyway.
+### SFT
+somethings still wrong i think, need to check.
 
 ### 2. MMLU — small run (Step 7)
 Trim `subjects` in `configs/mmlu.yaml` to ~4, run `capabilities.py` for base + SFT. Confirm
@@ -53,20 +16,7 @@ Dolly wrapper for the SFT/DPO runs. Target: agreement within ~1%. Disagreement l
 implementation gap and is the more educational outcome.
 
 ### 4. DPO training
-**`training/dpo.py`** cuts off before tokenization. Before writing:
-- Four forward passes per example: policy on chosen, policy on rejected, reference on chosen,
-  reference on rejected. Collator / batch structure differ from SFT.
-- Reference model is already a merged dense model (`merge_and_unload()`); policy wraps it in a
-  **fresh** LoRA — new DPO adapters, not a continuation of the SFT adapters.
-- Loss: `-log sigmoid(beta * ((logp_chosen - logp_rejected) - (ref_logp_chosen - ref_logp_rejected)))`.
-  Add `beta` to `configs/dpo.yaml` (missing).
-- Same held-out Dolly val-loss hook as `sft.py` — factor the eval loop into a shared helper
-  so both call it. Measures whether preference training degraded the Dolly fit.
-- Train/test split, mirroring `sft.py`.
 
-**DPO run notebook** — mirror `notebooks/01_sft_training.ipynb`.
-
-Then: held-out Dolly loss gate for SFT+DPO (should be close to SFT's).
 
 ### 5. IFEval
 Write `evaluation/benchmarks/ifeval.py` + a run notebook. Programmatic constraint checks
