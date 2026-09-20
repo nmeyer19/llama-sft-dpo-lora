@@ -33,5 +33,5 @@ wandb:
   run_name: sft-lora-r16-5k-samples         # W&B run name
 
 outputs:
-  model_dir:                                # where the SFT model is saved
-    /content/drive/MyDrive/llama-sft-dpo-lora/sft/sft_model
+  hub_repo_id: nmeyer19/llama-3.2-1b-sft-dolly-lora  # HF Hub repo the SFT adapter is pushed to
+  hub_private: false                                 # repo visibility on HF Hub

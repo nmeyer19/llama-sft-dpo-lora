@@ -1,7 +1,6 @@
 model:
-  name: meta-llama/Llama-3.2-1B       # HF location of base model  
-  checkpoint_path:                    # location of the saved LoRA adapters
-    /content/drive/MyDrive/llama-sft-dpo-lora/sft/sft_model
+  name: meta-llama/Llama-3.2-1B       # HF location of base model
+  checkpoint_path: nmeyer19/llama-3.2-1b-sft-dolly-lora  # HF Hub repo holding the SFT adapter
   max_length: 512                     # max sequence length
   dtype: bfloat16                     # 16bit float weights for mem efficiency
 
@@ -37,5 +36,5 @@ wandb:
   run_name: dpo-lora-r16-5k-samples # W&B run name
 
 outputs:
-  model_dir:                        # where the DPO model is saved
-    /content/drive/MyDrive/llama-sft-dpo-lora/dpo/dpo_model
+  hub_repo_id: nmeyer19/llama-3.2-1b-dpo-harmless-lora  # HF Hub repo the DPO adapter is pushed to
+  hub_private: false                                    # repo visibility on HF Hub

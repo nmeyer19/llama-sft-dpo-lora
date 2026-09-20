@@ -18,12 +18,12 @@ models = [
     {"name": "base-model", 
      "config": sft_config, 
      "checkpoint": None},
-    {"name": "sft-model", 
-     "config": sft_config, 
-     "checkpoint": sft_config["outputs"]["model_dir"]},
-    #{"name": "dpo-model", 
-    #"config": dpo_config, 
-    #"checkpoint": dpo_config["outputs"]["model_dir"]},
+    {"name": "sft-model",
+     "config": sft_config,
+     "checkpoint": sft_config["outputs"]["hub_repo_id"]},
+    #{"name": "dpo-model",
+    #"config": dpo_config,
+    #"checkpoint": dpo_config["outputs"]["hub_repo_id"]},
 ]
 
 # set device

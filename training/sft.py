@@ -161,7 +161,16 @@ for epoch in range(total_epochs):
 
     lora_model.train()                                              # back to train mode
 
-# save everything
-lora_model.save_pretrained(config["outputs"]["model_dir"])
-tokenizer.save_pretrained(config["outputs"]["model_dir"])
+# push everything to the Hub, tagging the commit with what produced it
+commit_message = (
+    f"lr={config['training']['learning_rate']} "
+    f"epochs={config['training']['num_epochs']} "
+    f"wandb_run={wandb.run.url}"
+)
+lora_model.push_to_hub(config["outputs"]["hub_repo_id"],
+                       private=config["outputs"]["hub_private"],
+                       commit_message=commit_message)
+tokenizer.push_to_hub(config["outputs"]["hub_repo_id"],
+                      private=config["outputs"]["hub_private"],
+                      commit_message=commit_message)
 wandb.finish()

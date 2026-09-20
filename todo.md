@@ -1,5 +1,36 @@
 # Todo
 
+## Infra: checkpoint saving — Drive to HF Hub
+Model weights (LoRA adapters + tokenizer) move to HF Hub; everything else (eval result
+dumps, notebook scratch) stays on Drive, since W&B already owns metrics/curves.
+
+Done:
+- **`.env`** (new, gitignored) — holds `HF_TOKEN` for **local** script use only.
+- **`configs/sft.yaml`** — `outputs.model_dir` -> `outputs.hub_repo_id:
+  nmeyer19/llama-3.2-1b-sft-dolly-lora` (+ `outputs.hub_private: false`).
+- **`configs/dpo.yaml`** — `model.checkpoint_path` -> the SFT repo id above;
+  `outputs.model_dir` -> `outputs.hub_repo_id: nmeyer19/llama-3.2-1b-dpo-harmless-lora`
+  (+ `outputs.hub_private: false`). Still missing `beta` (see item 4).
+- **`training/sft.py`** — final `save_pretrained(...)` calls replaced with
+  `push_to_hub(...)`, tagging each commit with `lr` / `epochs` / the W&B run URL.
+- **`evaluation/capabilities.py`** — checkpoint lookups updated to `outputs.hub_repo_id`.
+- **`models/loader.py`** — confirmed no change needed; `from_pretrained` already resolves
+  a Hub repo id exactly like a local path.
+
+Still open:
+- Confirm the Colab `HF_TOKEN` secret (`userdata.get("HF_TOKEN")`, used in
+  `notebooks/01_sft_training.ipynb` cell 5) actually has **write** scope — it's only ever
+  needed read, for downloading gated Llama weights, until now. This is the one thing that
+  will make the retrain in step 1 below actually fail if it's wrong.
+- **`training/dpo.py`** — once written (see item 4), its save step should push to
+  `configs/dpo.yaml`'s new `outputs.hub_repo_id`.
+- Decide: push once at the end of training (current behavior, matches what `sft.py` always
+  did) vs. per-epoch. A Hub push is all-or-nothing unlike Drive's continuous sync, so a
+  disconnect mid-run still loses everything either way today — per-epoch pushes would fix
+  that, but haven't been added.
+- `requirements.txt` / `python-dotenv`: still not added, since no local script reads `.env`
+  yet. Add it if/when one does.
+
 ## Next steps
 
 ### 1. Gate: is the SFT checkpoint current?
